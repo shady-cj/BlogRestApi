@@ -2,7 +2,8 @@ from rest_framework.views import APIView
 from rest_framework.response import Response 
 from rest_framework import permissions, status
 from django.contrib.auth.models import User 
-from .serializers import UserSerializer
+from .serializers import UserSerializer,ProfileSerializer,FollowerSerializer,FollowingSerializer
+from .models import Profile 
 
 class RegisterView(APIView):
     permission_classes =(permissions.AllowAny, )
@@ -10,9 +11,9 @@ class RegisterView(APIView):
     def post(self,request):
         try:
             data = request.data
-            first_name = data.get('first_name')
-            last_name = data.get('last_name')
-            username = data.get('username')
+            first_name = data.get('first_name').strip()
+            last_name = data.get('last_name').strip()
+            username = data.get('username').strip().lower()
             password = data.get('password')
             re_password = data.get('re_password')
 
@@ -63,9 +64,10 @@ class LoadUserView(APIView):
     def get(self, request,format=None):
         try:
             user =request.user
-            user = UserSerializer(user)
+            profile = Profile.objects.filter(user__id = user.id).prefetch_related('following').first()
+            profile = ProfileSerializer(profile)
             return Response(
-                {'user':user.data},
+                {'user':profile.data},
                 status = status.HTTP_200_OK
             )
         except:
@@ -74,3 +76,63 @@ class LoadUserView(APIView):
                     'error':'Something went wrong when trying to load user'
                 }
             )
+
+class UserProfileFollowInfo(APIView):
+    def get(self, request, username=None,f_type=None, format=None):
+        if username:
+            try:
+                user = User.objects.get(username =username)
+                if f_type in ['following','followers']:
+                    try:
+                        if f_type == 'following':
+                            prof = Profile.objects.filter(user= user).prefetch_related('following').first()
+                            s_data = FollowingSerializer(prof) 
+                            return Response({
+                                'data':s_data.data
+                            }, status = status.HTTP_200_OK)
+                        else:
+                            s_data = FollowerSerializer(user)
+                            return Response({
+                                'data':s_data.data
+                            },status = status.HTTP_200_OK)
+                    except Exception as e:
+                        return Response({
+                            'error':'Something Went Wrong'
+                        })
+                        
+
+                else:
+
+                    return Response({
+                        'message':'Not Found'
+                    },status = status.HTTP_404_NOT_FOUND)
+            except User.DoesNotExist:
+                return Response({
+                    'error':f'No such user with the username {username}'
+                }, status = status.HTTP_400_BAD_REQUEST)
+
+        
+            
+class EditUserProfileApiView(APIView):
+    def put(self,request, *args, **kwargs):
+        try:
+            user = request.user
+            data = request.data
+            user_info = data.get('user')
+            profile_info = data.get('profile')
+            user_serializer = UserSerializer(data= user_info, instance = user,partial= True)
+            user_serializer.is_valid(raise_exception = True)
+            user_serializer.save()
+            profile = Profile.objects.get(user = user)
+            profile_serializer = ProfileSerializer(data = profile_info, instance = profile,partial=True)
+            profile_serializer.is_valid(raise_exception = True)
+            profile_serializer.save()
+            return Response({
+                'message':'Profile Updated Succesfully',
+                'data':profile_serializer.data
+            },status = status.HTTP_200_OK)
+        except Exception as e:
+            print(e)
+            return Response({
+                'error':'something went wrong'
+            }, status = status.HTTP_400_BAD_REQUEST)

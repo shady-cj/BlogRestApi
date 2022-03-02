@@ -50,7 +50,10 @@ INSTALLED_APPS = [
     'rest_framework',
     'corsheaders',
     'Blog', 
-    'blogUsers'
+    'blogUsers',
+    'ckeditor',
+    'cloudinary_storage',
+    'debug_toolbar'
 ]
 
 MIDDLEWARE = [
@@ -59,9 +62,13 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
+    'debug_toolbar.middleware.DebugToolbarMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
+]
+INTERNAL_IPS= [
+    "127.0.0.1"
 ]
 
 ROOT_URLCONF = 'MyCustomBlog.urls'
@@ -128,6 +135,8 @@ TIME_ZONE = 'UTC'
 
 USE_I18N = True
 
+USE_L10N = True
+
 USE_TZ = True
 
 
@@ -135,6 +144,8 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/4.0/howto/static-files/
 
 STATIC_URL = 'static/'
+MEDIA_URL = '/media/'
+DEFAULT_FILE_STORAGE = "cloudinary_storage.storage.MediaCloudinaryStorage"
 
 REST_FRAMEWORK = {
 
@@ -143,7 +154,9 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_AUTHENTICATION_CLASSES':(
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-    )
+    ),
+    'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
+    'PAGE_SIZE': 5
 }
 
 SIMPLE_JWT = {
@@ -165,3 +178,8 @@ CORS_ALLOWED_ORIGINS = [
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
+CLOUDINARY_STORAGE = {
+    "CLOUD_NAME":env('CLOUDINARY_CLOUD_NAME'),
+    "API_KEY":env('CLOUDINARY_API_KEY'),
+    "API_SECRET":env('CLOUDINARY_API_SECRET'),
+}
