@@ -2,6 +2,7 @@ from rest_framework.test import APITestCase
 from django.urls import reverse
 from rest_framework import status
 import json
+from django.db import transaction,IntegrityError
 
 
 from django.contrib.auth.models import User 
@@ -88,18 +89,22 @@ class TestBlogModel(APITestCase):
         b.save()
         self.assertEqual(Topic.objects.get(name="Technology").topic.all().count(),1)
         self.assertEqual(Topic.objects.get(name="Technology").topic.all().first().id,1)
+    def test_increment_view_post(self):
+        qs = BlogPost.objects.all().first()
+        qs.viewed_by.add(self.user)
+        self.assertTrue(qs.viewed_by.all().exists())
+        self.assertTrue(BlogPost.objects.get(id = qs.id).views, 1)
 
 
 class TestBlogRoutes(APITestCase):
     def setUp(self):
-        self.client.post(reverse('register'), json.dumps({'first_name':'Peter', 'last_name':'Erinfolami', 'username':'shady', 'password':'shady123', 're_password':'shady123'}), content_type='application/json',HTTP_ACCEPT='application/json')
+        self.client.post(reverse('register'), json.dumps({'first_name':'shady', 'last_name':'Erinfolami',  'password':'shady123', 're_password':'shady123'}), content_type='application/json',HTTP_ACCEPT='application/json')
 
         self.user = User.objects.get(username = 'shady')
         self.blog1 = BlogPost.objects.create(
             author = self.user,
             title= 'testing 1',
             content = 'content 1',
-            featured= True,
             published=True
 
         )
@@ -107,7 +112,6 @@ class TestBlogRoutes(APITestCase):
             author = self.user,
             title= 'testing 2',
             trashed=True,
-            featured=True, 
             content = 'content 2'
 
         )
@@ -126,22 +130,70 @@ class TestBlogRoutes(APITestCase):
         res = self.client.get('/blogs/feed/')
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
 
-    def test_blogposts_list_view_default_with_auth(self):
+    def test_blogposts_list_view_default_with_auth_but_with_unapproved_topics(self):
         # Testing for all posts but all return posts must be a published post and post must not be a trashed post(i.e removed by the author)
         self.authenticate()
         res = self.client.get('/blogs/feed/')
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        self.assertIsInstance(res.data,list)
-        self.assertEqual(len(res.data), 2)
+        # Since none of the posts doesn't have approved topics then they shouldn't be returned   
+        self.assertEqual(len(res.data.get('results')), 0)
+        self.assertNotEqual(len(res.data.get('results')), BlogPost.objects.filter(published=True, trashed=False).count())
     
-    def test_blogposts_list_featured_posts_view_with_auth(self):
-        # testing for featured posts but featured posts must also be a published post and also not a trashed post
+    def test_blogposts_list_view_default_with_auth_but_with_approved_topics(self):
+        # Testing for all posts but all return posts must be a published post and post must not be a trashed post(i.e removed by the author)
         self.authenticate()
-        res = self.client.get('/blogs/feed/?filter=featured')
+
+        # Creating a topic and adding it to the blog post
+        topic = Topic.objects.create(name="Technology", approved=True)
+        self.blog1.blog_topic = topic
+        self.blog1.save()
+        self.blog2.blog_topic = topic
+        self.blog2.save()
+        self.blog3.blog_topic = topic
+        self.blog3.save()
+        res = self.client.get('/blogs/feed/')
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        self.assertIsInstance(res.data,list)
-        self.assertEqual(len(res.data),1)
-        self.assertEqual(res.data[0].get('title'),'testing 1')
+        self.assertIsInstance(res.data.get('results'),list)
+        # Returns 2 posts since one of the post has been trashed
+        self.assertEqual(len(res.data.get('results')), 2)
+        self.assertEqual(len(res.data.get('results')), BlogPost.objects.filter(published=True, trashed=False).count())
+
+
+
+    def test_blogposts_list_recommended_posts_view_with_auth_and_approved_topic(self):
+        # testing for recommended posts but which means the posts must contain a topic the user is interested in or following. 
+        self.authenticate()
+        topic = Topic.objects.create(name="Technology",approved=True)
+        topic2 = Topic.objects.create(name="Political",approved=True)
+        self.user.following_topics.add(topic,topic2)
+        self.blog1.blog_topic =topic
+        self.blog2.blog_topic =topic2
+        self.blog3.blog_topic = topic
+        self.blog1.save()
+        self.blog2.save()
+        self.blog3.save()
+        res = self.client.get('/blogs/feed/?filter=recommended')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        # print(res.data,'filter recommended')
+        self.assertIsInstance(res.data.get('results'),list)
+        self.assertEqual(len(res.data.get('results')),2)
+        self.assertEqual(res.data.get('results')[0].get('title'),'testing 1')
+        self.assertEqual(res.data.get('results')[1].get('title'),'testing 3')
+    
+    def test_blogposts_list_recommended_posts_view_with_auth_and_unapproved_topic(self):
+        # testing for recommended posts but which means the posts must contain a topic the user is interested in or following. 
+        self.authenticate()
+        topic = Topic.objects.create(name="Technology")
+        topic2 = Topic.objects.create(name="Political")
+        self.user.following_topics.add(topic,topic2)
+        self.blog1.blog_topic =topic
+        self.blog2.blog_topic =topic2
+        self.blog1.save()
+        self.blog2.save()
+        res = self.client.get('/blogs/feed/?filter=recommended')
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertNotEqual(len(res.data.get('results')),2)
+        self.assertEqual(len(res.data.get('results')),0)
 
     def test_blogposts_list_following_posts_view_with_auth(self):
         # Test for articles created by authors authenticated user is following 
@@ -149,11 +201,12 @@ class TestBlogRoutes(APITestCase):
         # Follow the newly created follower
         u1 = User.objects.get(username='shady')
         Profile.objects.get(user= u1).following.add(u)
+        topic2 = Topic.objects.create(name="Political",approved=True)
         post_1 = BlogPost.objects.create(
             author = u,
             title= 'following user article 1',
             content = 'content 1',
-            featured= True,
+            blog_topic = topic2,
             published=True,
             trashed = True
 
@@ -162,7 +215,7 @@ class TestBlogRoutes(APITestCase):
             author = u,
             title= 'following user article 2',
             content = 'content 2',
-            featured= False,
+            blog_topic=topic2,
             published=True
 
         )
@@ -170,7 +223,8 @@ class TestBlogRoutes(APITestCase):
             author = u,
             title= 'following user article 3',
             content = 'content 3',
-            featured= True,
+            published=True
+           
 
         )
 
@@ -178,24 +232,40 @@ class TestBlogRoutes(APITestCase):
 
         res = self.client.get('/blogs/feed/?filter=following')
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        self.assertIsInstance(res.data,list)
-        self.assertEqual(len(res.data),1)
-        self.assertEqual(res.data[0].get('title'),'following user article 2')
+        self.assertIsInstance(res.data.get('results'),list)
+        self.assertEqual(len(res.data.get('results')),1)
+        self.assertEqual(res.data.get('results')[0].get('title'),'following user article 2')
 
-    def test_bookmark_lists(self):
+    def test_bookmark_lists_with_unapproved_topics(self):
       
         # Since Bookmarks are created immediately a user is created
         b = Bookmark.objects.get(user = self.user)
+        # Create an approved topic and assign to blogs instance
+
+    
+        # topic = Topic.objects.create(name="Technology", approved=True)
+        # self.blog1.blog_topic = topic
+        # self.blog1.save()
+        # self.blog2.blog_topic = topic
+        # self.blog2.save()
+        # self.blog3.blog_topic = topic
+        # self.blog3.save()
         b.blogPost.add(self.blog1,self.blog2,self.blog3)
         self.assertEqual(self.user.bookmark_user.blogPost.all().count(),3)
         
         self.authenticate()
 
         res = self.client.get('/blogs/bookmarks/')
-        
+         
+        # also testing the endpoint when a filter query is given
+        res2 = self.client.get('/blogs/bookmarks/?filter=saved')
+
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertEqual(res.status_code, status.HTTP_200_OK)
        
-        self.assertEqual(len(res.data[0].get('blogPost')), 3)
+        self.assertEqual(len(res.data.get('results')[0].get('blogPost')), 3)
+        self.assertEqual(len(res2.data.get('results')[0].get('blogPost')), 3)
+        
 
 
     def test_create_blog_view_with_unapproved_topic(self):
@@ -209,11 +279,13 @@ class TestBlogRoutes(APITestCase):
 
         self.authenticate()
         res = self.client.post(reverse('create-article'), json.dumps(post_data),content_type= 'application/json')
-       
+        
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
         self.assertEqual(res.data.get('blog_topic'),None)
-
-        b = BlogPost.objects.get(title = post_data['title'])
+        self.assertIsInstance(res.data.get('suggested_topic'),dict)
+    
+        b = BlogPost.objects.get(title= post_data['title'])
+    
         self.assertEqual(b.author.username,'shady')
         self.assertFalse(b.published)
         self.assertEqual(b.blog_topic, None)
@@ -221,6 +293,7 @@ class TestBlogRoutes(APITestCase):
 
         topic = Topic.objects.get(name= "Sports")
         self.assertFalse(topic.approved)
+
 
     def test_create_blog_view_with_approved_topic(self):
         # this goes ahead to create the topic and add to blog topic since it has been approved
@@ -262,7 +335,6 @@ class TestBlogRoutes(APITestCase):
 
         self.authenticate()
         res = self.client.post(reverse('create-article'), json.dumps(post_data),content_type= 'application/json')
-       
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
         self.assertIsInstance(res.data.get('blog_topic'),dict)
         self.assertEqual(res.data.get('suggested_topic'),None)
@@ -409,19 +481,19 @@ class TestBlogRoutes(APITestCase):
         self.authenticate()
         res = self.client.get(reverse('story', args=('published',)))
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(res.data), BlogPost.objects.filter(trashed=False,published=True,author = self.user).count())
+        self.assertEqual(len(res.data.get('results')), BlogPost.objects.filter(trashed=False,published=True,author = self.user).count())
 
     def test_user_Drafted_story_view(self):
         self.authenticate()
         res = self.client.get(reverse('story', args=('drafts',)))
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(res.data), BlogPost.objects.filter(trashed=False,published=False,author = self.user).count())
+        self.assertEqual(len(res.data.get('results')), BlogPost.objects.filter(trashed=False,published=False,author = self.user).count())
 
     def test_user_Trashed_story_view(self):
         self.authenticate()
         res = self.client.get(reverse('story', args=('trash',)))
         self.assertEqual(res.status_code, status.HTTP_200_OK)
-        self.assertEqual(len(res.data), BlogPost.objects.filter(trashed=True,author = self.user).count())
+        self.assertEqual(len(res.data.get('results')), BlogPost.objects.filter(trashed=True,author = self.user).count())
 
 
     # Testing Actions Liking Posts, Bookmarking ,Commenting, Following, Unfollowing....

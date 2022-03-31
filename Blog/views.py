@@ -11,44 +11,39 @@ from rest_framework.response import Response
 # from rest_framework.decorators import action
 from rest_framework.viewsets import ModelViewSet
 from rest_framework import permissions,exceptions,status
+from django.db import transaction
 
 class ListBlogPostViewset(ModelViewSet):
     serializer_class = ListBlogPostSerializer
-    queryset = BlogPost.objects.filter(trashed =False,published=True).select_related('author','blog_topic')
+    queryset = BlogPost.objects.filter(trashed =False,published=True,blog_topic__approved=True).select_related('author','blog_topic')
 
     def get_queryset(self):
         super().get_queryset()
         search_params = self.request.query_params.get('filter')
-        topic_search_params = self.request.query_params.get('topic')
+        user = self.request.user
 
-        if search_params in ['all','featured','following']:
+        if search_params in ['all','recommended','following']:
             if search_params == 'all':
-                return BlogPost.objects.filter(trashed =False,published=True).select_related('author','blog_topic')
-            elif search_params == 'featured':
-                return BlogPost.objects.filter(featured = True,trashed =False,published=True).select_related('author','blog_topic')
+                return BlogPost.objects.filter(trashed =False,published=True, blog_topic__approved = True).select_related('author','blog_topic')
+            elif search_params == 'recommended':
+                get_user_topics = user.following_topics.all()
+                # get_user_post_views = user.viewed_posts.all()
+                # topic_lists = get_user_topics + get_user_post_views
+                return BlogPost.objects.filter(blog_topic__in = get_user_topics, trashed =False,published=True, blog_topic__approved =True).select_related('author','blog_topic')
             elif search_params == 'following':
                 try:
                     user = self.request.user
                     p = Profile.objects.filter(user= user).prefetch_related('following').first()
                     following = p.following.all()
-                    return BlogPost.objects.filter(author__in = following,trashed =False,published=True).select_related('author','blog_topic')
+                    return BlogPost.objects.filter(author__in = following,trashed =False,published=True, blog_topic__approved =True).select_related('author','blog_topic')
                 except Exception as e:
                     print(e)
                     raise exceptions.NotFound(e)
-        elif topic_search_params is not None:
-            try:
-                # topic = Topic.objects.filter(name = topic_search_params).prefetch_related('topic').first()
-
-                topic = Topic.objects.get(name = topic_search_params)
-                blogpost = BlogPost.objects.filter(blog_topic = topic,trashed =False,published=True).select_related('author','blog_topic')
-                return blogpost
-            except Topic.DoesNotExist as e:
-                print(e)
-                raise exceptions.NotFound(e)
+        
                 
         
         else:
-            return BlogPost.objects.filter(trashed =False,published=True).select_related('author','blog_topic')
+            return BlogPost.objects.filter(trashed =False,published=True, blog_topic__approved=True).select_related('author','blog_topic')
     
 
 
@@ -60,8 +55,24 @@ class ListBookmarkPostViewSet(ModelViewSet):
     def get_queryset(self):
         super().get_queryset()
         user = self.request.user
+        search_params = self.request.query_params.get('filter')
+
+        if search_params is None:
+            return Bookmark.objects.filter(user = user).prefetch_related('blogPost')
+
+        if search_params in ['saved', 'recent']:
+            if search_params == 'saved':
+                return Bookmark.objects.filter(user = user).prefetch_related('blogPost')
+            else:
+                pass
+            # Implement recenty viewed posts by the user.
+        else:
+            raise exceptions.NotFound('Invalid search parameter')
+
         
-        return Bookmark.objects.filter(user = user).prefetch_related('blogPost')
+
+
+
 
 
 class ListTopicsViewSet(ModelViewSet):
@@ -69,28 +80,53 @@ class ListTopicsViewSet(ModelViewSet):
     queryset = Topic.objects.filter(approved=True)
 
 
+class ListTopicsPostAPIView(ListAPIView):
+    serializer_class = ListBlogPostSerializer
+    queryset = BlogPost.objects.filter(trashed =False,published=True).select_related('author','blog_topic')
+
+    def get_queryset(self):
+        super().get_queryset()
+        topic_name= self.kwargs.get('topic')
+        topic = Topic.objects.filter(name__iexact=topic_name, approved=True)
+        if topic.exists() and topic.count() == 1:
+            blogpost = BlogPost.objects.filter(blog_topic = topic.first(),trashed =False,published=True).select_related('author','blog_topic')
+            return blogpost
+        else:
+            return None
+        
+
 
 class CreateBlogPostAPIView(CreateAPIView):
     serializer_class = DetailBlogPostSerializer
 
+    
     def perform_create(self,serializer):
+        
         topic_name = self.request.data.get('topic_name')
+
         try:
             # check if topic is already exists
-            t = Topic.objects.filter(name__iexact = topic_name)
-            if t.exists():
+            with transaction.atomic():
+                t = Topic.objects.filter(name__iexact = topic_name)
+                if t.exists():
+                    topic = t.first()
 
-                topic = Topic.objects.filter(name = topic_name, approved =True).first()
-                return serializer.save(author=self.request.user,blog_topic = topic )
+                    if topic.approved:
+                        serializer.save(author=self.request.user,blog_topic = topic )
+                    else:
+                        serializer.save(author.self.request.user, suggested_topic=topic)
 
-            else:
-                topic = Topic.objects.create(name = topic_name)
-                return serializer.save(author=self.request.user,suggested_topic = topic )
+                else:
+                    topic_img = self.request.data.get('topic_img')
+                    topic = Topic.objects.create(name = topic_name)
+                    if topic_img is not None:
+                        topic = Topic.objects.create(name = topic_name,image= topic_img)
+                    serializer.save(author=self.request.user,suggested_topic=topic)
 
-            # if not topic
+                # if not topic
         except Exception as e:
             print(e)
-            return None 
+            raise exceptions.NotFound("Something Went Wrong")
 
 class RetrieveBlogPostAPIView(RetrieveUpdateAPIView):
     serializer_class = DetailBlogPostSerializer
@@ -103,7 +139,7 @@ class RetrieveBlogPostAPIView(RetrieveUpdateAPIView):
         if b.author == self.request.user:
             if b.trashed:
                 raise exceptions.NotFound('Article has already been Trashed by you')
-            return serializer.save()
+            serializer.save()
         else:
             raise exceptions.PermissionDenied('You are not the author of this Blog Post')
     def retrieve(self, request, *args, **kwargs):

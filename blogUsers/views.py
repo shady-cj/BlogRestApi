@@ -4,6 +4,8 @@ from rest_framework import permissions, status
 from django.contrib.auth.models import User 
 from .serializers import UserSerializer,ProfileSerializer,FollowerSerializer,FollowingSerializer
 from .models import Profile 
+import random 
+import string
 
 class RegisterView(APIView):
     permission_classes =(permissions.AllowAny, )
@@ -13,32 +15,41 @@ class RegisterView(APIView):
             data = request.data
             first_name = data.get('first_name').strip()
             last_name = data.get('last_name').strip()
-            username = data.get('username').strip().lower()
             password = data.get('password')
             re_password = data.get('re_password')
 
             if password == re_password:
                 if len(password)>= 8:
-                    if not User.objects.filter(username= username).exists():
-                        user = User.objects.create_user(
-                            first_name = first_name ,
-                            last_name = last_name,
-                            username = username, 
-                            password = password 
-                        )
-                        user.save()
+                    username = first_name
+                    count = 1
+                    while True:
+                        if not User.objects.filter(username= username).exists():
+                            user = User.objects.create_user(
+                                first_name = first_name ,
+                                last_name = last_name,
+                                username = username, 
+                                password = password 
+                            )
+                            user.save()
 
-                        if User.objects.filter(username= username).exists():
-                            return Response (
-                                {'success', 'Account Created Successfully'},
-                                status= status.HTTP_201_CREATED
-                            )
-                        
+                            if User.objects.filter(username= username).exists():
+                                return Response (
+                                    {'success', 'Account Created Successfully'},
+                                    status= status.HTTP_201_CREATED
+                                )
+                            
+                            else:
+                                return Response (
+                                    {'error', 'Something went wrong while trying to create account'},
+                                    status= status.HTTP_500_INTERNAL_SERVER_ERROR
+                                )
+
+                            # break
                         else:
-                            return Response (
-                                {'error', 'Something went wrong while trying to create account'},
-                                status= status.HTTP_500_INTERNAL_SERVER_ERROR
-                            )
+                            username = username +'_'+ str(''.join(random.choices(string.ascii_letters, k=count)))
+                            count+=1
+
+
                 else:
                     return Response(
                         {'error':'Password must be at least 8 characters in length'},

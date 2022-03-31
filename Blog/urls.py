@@ -3,6 +3,7 @@ from .views import (
     ListBlogPostViewset,
     ListBookmarkPostViewSet,
     ListTopicsViewSet,
+    ListTopicsPostAPIView,
     CreateBlogPostAPIView,
     RetrieveBlogPostAPIView,
     ListUserStoryAPIView,
@@ -23,5 +24,6 @@ urlpatterns = [
     path('create-article',CreateBlogPostAPIView.as_view(),name='create-article'),
     path('detail/<int:pk>',RetrieveBlogPostAPIView.as_view(),name='retrieve-update'),
     path('story/<str:story_type>',ListUserStoryAPIView.as_view(), name ='story'),
+    path('topic/<str:topic>',ListTopicsPostAPIView.as_view(), name ='topic'),
     path('activities/<str:action_type>',ActionApiView.as_view(),name= 'activities')
 ]

@@ -9,10 +9,13 @@ from django.db.models.signals import m2m_changed,post_save
 
 def path_file_name(instance, filename):
     return '/'.join(filter(None, ('blogs', instance.author.username,instance.id,'%Y', filename)))
-
+def path_file_name_topic(instance, filename):
+    return '/'.join(filter(None, ('topics', instance.name, filename)))
 class Topic(models.Model):
     name = models.CharField(max_length = 255)
     approved = models.BooleanField(default=False)
+    image = models.ImageField(upload_to=path_file_name_topic, blank=True, null=True)
+    followers = models.ManyToManyField(User, related_name='following_topics', blank=True)
 
 
     def __str__(self):
@@ -30,11 +33,12 @@ class BlogPost(models.Model):
     updated_at = models.DateTimeField(auto_now = True)
     published = models.BooleanField(default = False,blank= True)
     published_date = models.DateTimeField(null =True,blank=True)
-    featured = models.BooleanField(default=False)
+    views = models.PositiveIntegerField(default=0)
+    viewed_by = models.ManyToManyField(User,related_name="viewed_posts",blank=True)
     comments_by = models.ManyToManyField('Comment',related_name ='blog_comments',blank=True)
     comments = models.PositiveIntegerField(default= 0)
     likes = models.PositiveIntegerField(default= 0)
-    liked_by = models.ManyToManyField(User, related_name = 'post_likedBy',blank=True )
+    liked_by = models.ManyToManyField(User, related_name = 'post_likedBy',blank=True)
     blog_topic = models.ForeignKey(Topic,on_delete=models.CASCADE, related_name= 'topic',null = True,blank= True)
     suggested_topic = models.ForeignKey(Topic, on_delete=models.CASCADE, related_name = 'suggest' , null = True,blank=True)
     trashed = models.BooleanField(default=False)
@@ -128,15 +132,28 @@ def BlogPublished(instance,sender,created, *args,**kwargs):
             instance.blog_topic = instance.suggested_topic
             instance.suggested_topic = None
             instance.save()
-
 def TopicApproved(instance, sender,created, *args,**kwargs):
     if instance.approved:
         if instance.suggest.all().exists():
             for posts in instance.suggest.all():
                 posts.save()
 
+def IncrementViews(sender, instance, action, *args,**kwargs):
+          
+
+    if action in ['post_add', 'post_clear', 'post_remove']:
+        if kwargs.get('reverse') == False:
+            count = instance.viewed_by.all().count()
+            BlogPost.objects.filter(id = instance.id).update(views = count)
+        elif kwargs.get('reverse') == True:
+
+            for id_set in kwargs.get('pk_set'):
+                inst = BlogPost.objects.get(id = id_set).viewed_by.all().count()
+                BlogPost.objects.filter(id = id_set).update(views= inst)
+
 
 post_save.connect(BlogPublished, sender= BlogPost)
 post_save.connect(TopicApproved, sender = Topic)
 m2m_changed.connect(IncrementLike, sender= BlogPost.liked_by.through)
 m2m_changed.connect(IncrementComment, sender= BlogPost.comments_by.through)
+m2m_changed.connect(IncrementViews, sender= BlogPost.viewed_by.through)
