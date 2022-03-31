@@ -1,3 +1,3 @@
 # BlogRestApi
 
-Rest Api for a blog project..(Built with Django Rest Framework)
+Rest Api for my WEBlog project..(Built with Django Rest Framework)
