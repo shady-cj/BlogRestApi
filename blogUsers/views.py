@@ -16,59 +16,48 @@ class RegisterView(APIView):
             first_name = data.get('first_name').strip()
             last_name = data.get('last_name').strip()
             password = data.get('password')
-            re_password = data.get('re_password')
+            if len(password)>= 8:
+                username = first_name
+                count = 1
+                while True:
+                    if not User.objects.filter(username= username).exists():
+                        user = User.objects.create_user(
+                            first_name = first_name ,
+                            last_name = last_name,
+                            username = username, 
+                            password = password 
+                        )
+                        user.save()
 
-            if password == re_password:
-                if len(password)>= 8:
-                    username = first_name
-                    count = 1
-                    while True:
-                        if not User.objects.filter(username= username).exists():
-                            user = User.objects.create_user(
-                                first_name = first_name ,
-                                last_name = last_name,
-                                username = username, 
-                                password = password 
+                        if User.objects.filter(username= username).exists():
+                            return Response (
+                                {'success': 'Account Created Successfully'},
+                                status= status.HTTP_201_CREATED
                             )
-                            user.save()
-
-                            if User.objects.filter(username= username).exists():
-                                return Response (
-                                    {'success', 'Account Created Successfully'},
-                                    status= status.HTTP_201_CREATED
-                                )
-                            
-                            else:
-                                return Response (
-                                    {'error', 'Something went wrong while trying to create account'},
-                                    status= status.HTTP_500_INTERNAL_SERVER_ERROR
-                                )
-
-                            # break
+                        
                         else:
-                            username = username +'_'+ str(''.join(random.choices(string.ascii_letters, k=count)))
-                            count+=1
+                            return Response (
+                                {'error': 'Something went wrong while trying to create account'},
+                                status= status.HTTP_500_INTERNAL_SERVER_ERROR
+                            )
 
-
-                else:
-                    return Response(
-                        {'error':'Password must be at least 8 characters in length'},
-                        status = status.HTTP_400_BAD_REQUEST
-
-                    )
-
-
+                        # break
+                    else:
+                        username = username +'_'+ str(''.join(random.choices(string.ascii_letters, k=count)))
+                        count+=1
             else:
                 return Response(
-                    {
-                        'error':'Passwords do not match'
-
-                    }, 
+                    {'error':'Password must be at least 8 characters in length'},
                     status = status.HTTP_400_BAD_REQUEST
+
                 )
-        except:
+
+
+        except Exception as e:
+            print('exception for register', e)
             return Response(
-                {'error':'Something went wrong when trying to register account'}
+                {'error':'Something went wrong when trying to register account'},
+                status = status.HTTP_400_BAD_REQUEST
             )
 
 class LoadUserView(APIView):

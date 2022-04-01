@@ -49,7 +49,7 @@ class TestUserRegistrationView(APITestCase):
 
         # Hitting the registration view endpoint with the necessary credentials but without username 
 
-        response = self.client.post(reverse('register'), json.dumps({'first_name':'Peter', 'last_name':'Erinfolami', 'password':'shady123','re_password':'shady123'}), content_type='application/json')
+        response = self.client.post(reverse('register'), json.dumps({'first_name':'Peter', 'last_name':'Erinfolami', 'password':'shady123'}), content_type='application/json')
         # expecting to get "Peter" as my username
 
         self.assertEqual(response.status_code, status.HTTP_201_CREATED)
@@ -58,11 +58,12 @@ class TestUserRegistrationView(APITestCase):
         self.assertEqual(users.first().username, 'Peter')
 
     def test_users_creation_with_same_first_name(self):
-        user1 =self.client.post(reverse('register'), json.dumps({'first_name':'Peter', 'last_name':'Erinfolami', 'password':'shady123','re_password':'shady123'}), content_type='application/json')
-        user2 = self.client.post(reverse('register'), json.dumps({'first_name':'Peter', 'last_name':'Ceejay', 'password':'shady123','re_password':'shady123'}), content_type='application/json')
-        user3 = self.client.post(reverse('register'), json.dumps({'first_name':'Peter', 'last_name':'Jon', 'password':'shady123','re_password':'shady123'}), content_type='application/json')
+        user1 =self.client.post(reverse('register'), json.dumps({'first_name':'Peter', 'last_name':'Erinfolami', 'password':'shady123'}), content_type='application/json')
+        user2 = self.client.post(reverse('register'), json.dumps({'first_name':'Peter', 'last_name':'Ceejay', 'password':'shady123'}), content_type='application/json')
+        user3 = self.client.post(reverse('register'), json.dumps({'first_name':'Peter', 'last_name':'Jon', 'password':'shady123'}), content_type='application/json')
 
         self.assertEqual(user1.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(user1.data.get('success'), 'Account Created Successfully')
         self.assertEqual(user2.status_code, status.HTTP_201_CREATED)
         self.assertEqual(user3.status_code, status.HTTP_201_CREATED)
         self.assertEqual(User.objects.all().count(), 3)
@@ -70,14 +71,15 @@ class TestUserRegistrationView(APITestCase):
         self.assertNotEqual(User.objects.filter(first_name='Peter').first().username, User.objects.filter(first_name='Peter').last().username)
         
     
-    def test_user_creation_fail_due_to_inconsistent_password(self):
-        # Hitting the registration endpoint with passwords that does not match
-        response = self.client.post(reverse('register'), json.dumps({'first_name':'Peter', 'last_name':'Erinfolami', 'username':'shady', 'password':'shady123', 're_password':'shady11'}), content_type='application/json')
+    def test_user_creation_fail_due_to_inconsistent_fields(self): 
+        # Hitting the registration endpoint with wrong fields that does not match the required field of the endpoint
+        response = self.client.post(reverse('register'), json.dumps({'firstName':'Peter', 'lastName':'Erinfolami', 'username':'shady', 'password':'shady123'}), content_type='application/json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIsInstance(response.data.get('error'), str)
 
     def test_user_creation_fail_due_to_short_password(self):
         # Hitting the registration endpoint with passwords length that is less than 8 characters
-        response = self.client.post(reverse('register'), json.dumps({'first_name':'Peter', 'last_name':'Erinfolami', 'username':'shady', 'password':'shady', 're_password':'shady'}), content_type='application/json')
+        response = self.client.post(reverse('register'), json.dumps({'first_name':'Peter', 'last_name':'Erinfolami', 'username':'shady', 'password':'shady'}), content_type='application/json')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(response.data.get('error'), 'Password must be at least 8 characters in length')
 
@@ -85,7 +87,7 @@ class TestUserRegistrationView(APITestCase):
 class TestLoadUser(APITestCase):
 
     def setUp(self):
-        self.client.post(reverse('register'), json.dumps({'first_name':'Peter', 'last_name':'Erinfolami','password':'shady123', 're_password':'shady123'}), content_type='application/json',HTTP_ACCEPT='application/json')
+        self.client.post(reverse('register'), json.dumps({'first_name':'Peter', 'last_name':'Erinfolami','password':'shady123'}), content_type='application/json',HTTP_ACCEPT='application/json')
     def test_load_user_with_no_authorization(self):
 
         # Hitting the load user endpoint with no token authorization
