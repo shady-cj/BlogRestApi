@@ -70,11 +70,12 @@ class LoadUserView(APIView):
                 {'user':profile.data},
                 status = status.HTTP_200_OK
             )
-        except:
+        except Exception as e:
+            print(e)
             return Response(
                 {
                     'error':'Something went wrong when trying to load user'
-                }
+                }, status = status.HTTP_400_BAD_REQUEST
             )
 
 class UserProfileFollowInfo(APIView):

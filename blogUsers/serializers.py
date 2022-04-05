@@ -49,6 +49,9 @@ class UserSerializer(serializers.ModelSerializer):
 
 class ProfileSerializer(serializers.ModelSerializer):
     user = UserSerializer(read_only =True)
+    articles = serializers.SerializerMethodField()
+    
+
     # following = UserSerializer(many= True)
     class Meta:
         model = Profile
@@ -56,10 +59,29 @@ class ProfileSerializer(serializers.ModelSerializer):
             'user',
             'profile_picture',
             'about',
-            'following'
+            'following',
+            'articles'
 
         ]
-       
+
+    def get_articles(self, obj):
+        user = obj.user.user_posts.all()
+        user_story = {
+            'published':user.filter(published =True, trashed = False).count(),
+            'drafts': user.filter(trashed=False,published=False).count(),
+            'trashed':user.filter(trashed=True).count()
+        }
+        return user_story
+
+
+        
+    
+    
+
+
+
+
+
 class FollowingSerializer(serializers.Serializer):
     following = serializers.SerializerMethodField()
 
