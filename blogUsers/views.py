@@ -77,12 +77,31 @@ class LoadUserView(APIView):
                     'error':'Something went wrong when trying to load user'
                 }, status = status.HTTP_400_BAD_REQUEST
             )
+class LoadAnyUserView(APIView):
+    permission_classes = [permissions.AllowAny,]
+    def get(self, request,username=None, format=None):
+        try:
+            user = User.objects.get(username =username)
+            profile = Profile.objects.filter(user__id = user.id).prefetch_related('following').first()
+            profile = ProfileSerializer(profile)
+            return Response(
+                {'user':profile.data},
+                status = status.HTTP_200_OK
+            )
+        except Exception as e:
+            return Response(
+                {
+                    'error':'Something went wrong when trying to load user'
+                }, status = status.HTTP_400_BAD_REQUEST
+            )
 
 class UserProfileFollowInfo(APIView):
+    permission_classes = [permissions.AllowAny,]
     def get(self, request, username=None,f_type=None, format=None):
         if username:
             try:
                 user = User.objects.get(username =username)
+
                 if f_type in ['following','followers']:
                     try:
                         if f_type == 'following':

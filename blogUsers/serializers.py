@@ -113,7 +113,7 @@ class FollowerSerializer(serializers.Serializer):
                 'first_name':f.user.first_name,
                 'last_name':f.user.last_name,
                 'username':f.user.username, 
-                'profile_picture':f.profile_picture.url
+                'profile_picture':f.profile_picture.url,
             }
             followers_list.append(f_obj)
 
